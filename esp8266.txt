@@ -1,0 +1,152 @@
+#define BLYNK_TEMPLATE_ID "TMPL6Rcj8_VT5"
+#define BLYNK_TEMPLATE_NAME "Health Monitor"
+#define BLYNK_AUTH_TOKEN "RlSaMXtbemwfWFb8X_hgdFuMyNDcb-YU"
+
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+#include <ESP8266HTTPClient.h>
+
+char ssid[] = "Realme 5i";
+char pass[] = "20842084";
+
+BlynkTimer timer;
+
+float temp = 0, hum = 0, ds18 = 0;
+int bpm = 0, ecg = 0;
+long weight = 0;
+
+const char* serverName = "http://192.168.43.243:8000/health_monitor/insert_data.php";  // তোমার লোকাল PHP স্ক্রিপ্টের URL
+
+WiFiClient client;
+HTTPClient http;
+
+unsigned long previousMillis = 0;
+const long interval = 5000; // প্রতি ৫ সেকেন্ডে POST করবে
+
+String inputString = "";     // সিরিয়াল থেকে আসা ডেটা জমা রাখবে
+bool stringComplete = false;
+
+void setup() {
+  Serial.begin(9600);
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+
+  timer.setInterval(2000L, sendToBlynk); // প্রতি ২ সেকেন্ডে Blynk-এ ডেটা পাঠাবে
+}
+
+void loop() {
+  Blynk.run();
+  timer.run();
+
+  // সিরিয়াল ডেটা পড়ার জন্য
+  serialEvent();
+
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    sendToServer();
+  }
+
+  readSensors();
+}
+
+void serialEvent() {
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    if (inChar == '\n') {
+      stringComplete = true;
+      break;
+    } else {
+      inputString += inChar;
+    }
+  }
+}
+
+void readSensors() {
+  if (stringComplete) {
+    parseSerialData(inputString);
+    inputString = "";
+    stringComplete = false;
+  }
+
+  // এখন ভেরিয়েবলগুলোতে ডেটা আছে, সেগুলো Blynk-এ পাঠাবে
+  sendToBlynk();
+}
+
+void parseSerialData(String data) {
+  // ডেটা এক্সাম্পল ফরম্যাট: TEMP:25.3,HUM:60.5,DS18:26.8,BPM:72,ECG:512,WEIGHT:123456
+
+  int tempIndex = data.indexOf("TEMP:");
+  int humIndex = data.indexOf("HUM:");
+  int ds18Index = data.indexOf("DS18:");
+  int bpmIndex = data.indexOf("BPM:");
+  int ecgIndex = data.indexOf("ECG:");
+  int weightIndex = data.indexOf("WEIGHT:");
+
+  if (tempIndex != -1) {
+    int commaPos = data.indexOf(',', tempIndex);
+    String t = (commaPos == -1) ? data.substring(tempIndex + 5) : data.substring(tempIndex + 5, commaPos);
+    temp = t.toFloat();
+  }
+  if (humIndex != -1) {
+    int commaPos = data.indexOf(',', humIndex);
+    String h = (commaPos == -1) ? data.substring(humIndex + 4) : data.substring(humIndex + 4, commaPos);
+    hum = h.toFloat();
+  }
+  if (ds18Index != -1) {
+    int commaPos = data.indexOf(',', ds18Index);
+    String d = (commaPos == -1) ? data.substring(ds18Index + 5) : data.substring(ds18Index + 5, commaPos);
+    ds18 = d.toFloat();
+  }
+  if (bpmIndex != -1) {
+    int commaPos = data.indexOf(',', bpmIndex);
+    String b = (commaPos == -1) ? data.substring(bpmIndex + 4) : data.substring(bpmIndex + 4, commaPos);
+    bpm = b.toInt();
+  }
+  if (ecgIndex != -1) {
+    int commaPos = data.indexOf(',', ecgIndex);
+    String e = (commaPos == -1) ? data.substring(ecgIndex + 4) : data.substring(ecgIndex + 4, commaPos);
+    ecg = e.toInt();
+  }
+  if (weightIndex != -1) {
+    int commaPos = data.indexOf(',', weightIndex);
+    String w = (commaPos == -1) ? data.substring(weightIndex + 7) : data.substring(weightIndex + 7, commaPos);
+    weight = w.toInt();
+  }
+}
+
+void sendToBlynk() {
+  Blynk.virtualWrite(V4, temp);
+  Blynk.virtualWrite(V5, hum);
+  Blynk.virtualWrite(V2, ds18);
+  Blynk.virtualWrite(V3, bpm);
+  Blynk.virtualWrite(V7, ecg);
+  Blynk.virtualWrite(V6, weight);
+}
+
+void sendToServer() {
+  if (WiFi.status() == WL_CONNECTED) {
+    http.begin(client, serverName);
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+    String httpRequestData = "temp=" + String(temp) +
+                             "&hum=" + String(hum) +
+                             "&ds18=" + String(ds18) +
+                             "&bpm=" + String(bpm) +
+                             "&ecg=" + String(ecg) +
+                             "&weight=" + String(weight);
+
+    int httpResponseCode = http.POST(httpRequestData);
+
+    if (httpResponseCode > 0) {
+      String response = http.getString();
+      Serial.println("POST response code: " + String(httpResponseCode));
+      Serial.println("Server response: " + response);
+    } else {
+      Serial.println("Error sending POST: " + String(httpResponseCode));
+    }
+
+    http.end();
+  } else {
+    Serial.println("WiFi not connected");
+  }
+}
