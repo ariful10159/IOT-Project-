@@ -1,0 +1,124 @@
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include "HX711.h"
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+#define DHTPIN 2
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+#define ONE_WIRE_BUS 3
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature ds18b20(&oneWire);
+
+#define HEART_PIN A0
+#define ECG_PIN A2  
+#define DT 4
+#define SCK 5
+HX711 scale;
+
+void setup() {
+  Serial.begin(9600);
+  lcd.init();
+  lcd.backlight();
+
+  dht.begin();
+  ds18b20.begin();
+  scale.begin(DT, SCK);
+
+  lcd.setCursor(0, 0);
+  lcd.print("System Starting");
+  delay(1500);
+  lcd.clear();
+}
+
+void loop() {
+  readDHT();
+  readDS18B20();
+  readHeartbeat();
+  readECG();
+  readWeight();
+  
+  delay(2000);
+}
+
+void readDHT() {
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+
+  Serial.print("TEMP:");
+  Serial.println(temp);
+  Serial.print("HUM:");
+  Serial.println(hum);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("T:");
+  lcd.print(temp);
+  lcd.setCursor(0, 1);
+  lcd.print("H:");
+  lcd.print(hum);
+  delay(1000);
+}
+
+void readDS18B20() {
+  ds18b20.requestTemperatures();
+  float tempC = ds18b20.getTempCByIndex(0);
+
+  Serial.print("DS18:");
+  Serial.println(tempC);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("DS18B20:");
+  lcd.print(tempC);
+  delay(1000);
+}
+
+void readHeartbeat() {
+  int heartVal = analogRead(HEART_PIN);
+  Serial.print("BPM:");
+  Serial.println(heartVal);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Heartbeat:");
+  lcd.print(heartVal);
+  delay(1000);
+}
+
+void readECG() {
+  int ecgVal = analogRead(ECG_PIN);
+  Serial.print("ECG:");
+  Serial.println(ecgVal);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("ECG:");
+  lcd.print(ecgVal);
+  delay(1000);
+}
+
+void readWeight() {
+  if (scale.is_ready()) {
+    long weight = scale.read();
+    Serial.print("WEIGHT:");
+    Serial.println(weight);
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Weight:");
+    lcd.print(weight);
+  } else {
+    Serial.println("WEIGHT:0");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Weight Error");
+  }
+  delay(1000);
+}
