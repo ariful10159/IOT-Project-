@@ -1,0 +1,83 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
+
+const char* ssid = "Pixel 7 pro";
+const char* password = "12345678";
+
+// ⚠️ CHANGE TO YOUR PC'S IP ADDRESS
+const char* serverURL = "http://192.168.0.110/live_health/insert.php";
+
+void setup() {
+  // ⚠️ MUST match Arduino baud rate (115200)
+  Serial.begin(115200);
+  
+  delay(1000);
+  
+  WiFi.begin(ssid, password);
+  Serial.println("\nConnecting to WiFi...");
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  Serial.println("\nWiFi Connected!");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println("Waiting for Arduino data...");
+}
+
+void loop() {
+  // Read data from Arduino
+  if (Serial.available() > 0) {
+    String data = Serial.readStringUntil('\n');
+    data.trim();
+    
+    // Validate data format
+    if (data.startsWith("gsr=") && data.length() > 20) {
+      Serial.print("📱 Arduino: ");
+      Serial.println(data);
+      
+      sendToServer(data);
+    }
+  }
+  
+  delay(100);
+}
+
+void sendToServer(String data) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("❌ WiFi disconnected");
+    return;
+  }
+  
+  WiFiClient client;
+  HTTPClient http;
+  
+  String url = String(serverURL) + "?" + data;
+  
+  Serial.print("🌐 Sending: ");
+  Serial.println(url);
+  
+  http.begin(client, url);
+  http.setTimeout(5000);
+  
+  int httpCode = http.GET();
+  
+  if (httpCode > 0) {
+    Serial.print("✅ HTTP Code: ");
+    Serial.println(httpCode);
+    
+    // Send ACK back to Arduino
+    Serial.println("ACK:" + String(httpCode));
+  } else {
+    Serial.print("❌ HTTP Error: ");
+    Serial.println(httpCode);
+    
+    // Send error to Arduino
+    Serial.println("ERROR:" + String(httpCode));
+  }
+  
+  http.end();
+}
